@@ -100,15 +100,43 @@ class HydrusCheckWorker(QThread):
     ok = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, hydrus: HydrusService) -> None:
+    def __init__(self, hydrus: HydrusService, tag_service_key: str = "", rating_service_key: str = "") -> None:
         super().__init__()
         self.hydrus = hydrus
+        self.tag_service_key = tag_service_key
+        self.rating_service_key = rating_service_key
 
     def run(self) -> None:
         try:
             info = self.hydrus.client.get_api_version()
             version = info.get("version", "?")
-            self.ok.emit(f"Hydrus API reachable (API version {version}).")
+            messages = [f"Hydrus API reachable (API version {version})."]
+
+            perm = self.hydrus.verify_access_key()
+            basic_perm = perm.get("basic_permissions", [])
+            if isinstance(basic_perm, list):
+                perm_names = [str(p) for p in basic_perm]
+                messages.append(f"Access key valid. Permissions: {', '.join(perm_names) if perm_names else 'none'}.")
+            else:
+                messages.append("Access key valid.")
+
+            if self.tag_service_key:
+                try:
+                    svc = self.hydrus.get_service(self.tag_service_key)
+                    name = svc.get("service", svc.get("name", "?"))
+                    messages.append(f"Tag service '{name}' reachable.")
+                except Exception as exc:
+                    messages.append(f"Tag service key check failed: {exc}")
+
+            if self.rating_service_key:
+                try:
+                    svc = self.hydrus.get_service(self.rating_service_key)
+                    name = svc.get("service", svc.get("name", "?"))
+                    messages.append(f"Rating service '{name}' reachable.")
+                except Exception as exc:
+                    messages.append(f"Rating service key check failed: {exc}")
+
+            self.ok.emit("\n".join(messages))
         except Exception as exc:
             self.failed.emit(str(exc))
 

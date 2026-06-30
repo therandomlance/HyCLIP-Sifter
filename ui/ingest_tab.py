@@ -405,7 +405,11 @@ class IngestTab(QWidget):
             return
         self.test_hydrus_btn.setEnabled(False)
         self.set_status("Testing Hydrus API connection...")
-        self.hydrus_worker = HydrusCheckWorker(self.hydrus)
+        self.hydrus_worker = HydrusCheckWorker(
+            self.hydrus,
+            tag_service_key=self.config.tag_service_key,
+            rating_service_key=self.config.rating_service_key,
+        )
         self.hydrus_worker.ok.connect(self._on_hydrus_ok)
         self.hydrus_worker.failed.connect(self._on_hydrus_failed)
         self.hydrus_worker.finished.connect(self._on_hydrus_finished)

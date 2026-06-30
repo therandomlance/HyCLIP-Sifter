@@ -63,3 +63,9 @@ class HydrusService:
             rating=rating,
             hashes=list(hashes),
         )
+
+    def verify_access_key(self) -> dict[str, object]:
+        return self.client.verify_access_key()
+
+    def get_service(self, service_key: str) -> dict[str, object]:
+        return self.client.get_service(service_key=service_key)
