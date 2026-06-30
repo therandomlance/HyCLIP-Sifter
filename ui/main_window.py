@@ -50,7 +50,7 @@ class MainWindow(QMainWindow):
         self.ingest_tab = IngestTab(
             self.db, self.hydrus, self.clip, self.config, self.set_status
         )
-        self.history_tab = HistoryTab(self.db, self.hydrus, self.set_status)
+        self.history_tab = HistoryTab(self.db, self.hydrus, self.set_status, self.config)
 
         self.tabs.addTab(self.search_tab, "Search")
         self.tabs.addTab(self.ingest_tab, "Ingest")
@@ -58,6 +58,9 @@ class MainWindow(QMainWindow):
 
         self._wire_signals()
         self._refresh_all()
+
+        if self.config.clip_load_on_startup:
+            self.ingest_tab.load_model()
 
     def set_status(self, text: str) -> None:
         self._status_label.setText(text)

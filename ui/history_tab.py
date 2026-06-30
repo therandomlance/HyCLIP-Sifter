@@ -26,11 +26,12 @@ OP_DEFER = 3
 class HistoryTab(QWidget):
     search_with_image = Signal(str)
 
-    def __init__(self, db: Database, hydrus: HydrusService, set_status, parent=None):
+    def __init__(self, db: Database, hydrus: HydrusService, set_status, config, parent=None):
         super().__init__(parent)
         self.db = db
         self.hydrus = hydrus
         self.set_status = set_status
+        self.config = config
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(8, 8, 8, 8)
@@ -72,8 +73,9 @@ class HistoryTab(QWidget):
         self.size_spin = QSpinBox()
         self.size_spin.setRange(48, 512)
         self.size_spin.setSingleStep(25)
-        self.size_spin.setValue(400)
+        self.size_spin.setValue(self.config.thumbnail_size)
         self.size_spin.setSuffix(" px")
+        self.grid.set_icon_size(self.size_spin.value())
         self.size_spin.valueChanged.connect(self.grid.set_icon_size)
         v.addWidget(self.size_spin)
 

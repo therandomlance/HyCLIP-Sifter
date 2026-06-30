@@ -3,6 +3,9 @@ from pathlib import Path
 
 DEFAULT_HYDRUS_URL = "http://127.0.0.1:45869"
 DEFAULT_CLIP_MODEL = "ViT-B-16-SigLIP2"
+DEFAULT_THUMBNAIL_SIZE = 400
+DEFAULT_SEARCH_SIZE = 50
+DEFAULT_CLIP_ON_STARTUP = False
 
 DEFAULTS = {
     "hydrus": {
@@ -13,6 +16,11 @@ DEFAULTS = {
     },
     "clip": {
         "model": DEFAULT_CLIP_MODEL,
+        "load_on_startup": str(DEFAULT_CLIP_ON_STARTUP),
+    },
+    "ui": {
+        "thumbnail_size": str(DEFAULT_THUMBNAIL_SIZE),
+        "search_size": str(DEFAULT_SEARCH_SIZE),
     },
 }
 
@@ -82,3 +90,15 @@ class Config:
     @property
     def clip_model(self) -> str:
         return self.get("clip", "model", DEFAULT_CLIP_MODEL)
+
+    @property
+    def clip_load_on_startup(self) -> bool:
+        return self.parser.getboolean("clip", "load_on_startup", fallback=DEFAULT_CLIP_ON_STARTUP)
+
+    @property
+    def thumbnail_size(self) -> int:
+        return self.parser.getint("ui", "thumbnail_size", fallback=DEFAULT_THUMBNAIL_SIZE)
+
+    @property
+    def search_size(self) -> int:
+        return self.parser.getint("ui", "search_size", fallback=DEFAULT_SEARCH_SIZE)

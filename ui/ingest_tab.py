@@ -144,7 +144,7 @@ class IngestTab(QWidget):
         v.addWidget(self.model_status)
         row = QHBoxLayout()
         self.load_btn = QPushButton("Load Model")
-        self.load_btn.clicked.connect(self._load_model)
+        self.load_btn.clicked.connect(self.load_model)
         row.addWidget(self.load_btn)
         self.eject_btn = QPushButton("Eject Model")
         self.eject_btn.clicked.connect(self._eject_model)
@@ -428,7 +428,7 @@ class IngestTab(QWidget):
             worker.deleteLater()
         self.test_hydrus_btn.setEnabled(True)
 
-    def _load_model(self) -> None:
+    def load_model(self) -> None:
         if self.model_worker is not None and self.model_worker.isRunning():
             return
         self.load_btn.setEnabled(False)
