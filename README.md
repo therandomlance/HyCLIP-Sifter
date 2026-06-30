@@ -3,7 +3,7 @@
 
 Digging through large image scrapes tends to produce a lot of garbage mixed in with the ones you want with no good way of singling them out and mass-deleting them. CLIP is good at finding similar images, so now you can find the bad stuff, find everything similar to it, and nuke it.  
 
-This was vibe coded in about 2 hours; one to write the spec, another to bugfix and make tweaks. Model used was GLM 5.2. Caveat emptor. 
+This was vibe coded in about 2 hours; one to write the [spec](https://gist.github.com/therandomlance/f463e50765605bac9fedf51eb58108a6), another to bugfix and make tweaks. Model used was GLM 5.2. Caveat emptor. 
 
 Anyways, here's the README it wrote for me.
 
