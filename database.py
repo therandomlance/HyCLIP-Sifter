@@ -1,6 +1,7 @@
 import json
 import re
 import sqlite3
+import struct
 import threading
 from pathlib import Path
 
@@ -30,7 +31,14 @@ class Database:
             self.conn.enable_load_extension(True)
         except Exception:
             pass
-        self.conn.load_extension(_EXTENSION_PATH)
+        try:
+            self.conn.load_extension(_EXTENSION_PATH)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to load the sqlite-vector extension "
+                f"({_EXTENSION_PATH}): {exc}. Ensure the native library "
+                "is present and compatible with this system."
+            ) from exc
         self._init_base_tables()
         self._quantized: set[str] = set()
         self._dirty: set[str] = set()
@@ -142,6 +150,15 @@ class Database:
                 f"SELECT embedding FROM {table} WHERE hash = ?", (hash_,)
             ).fetchone()
             return bytes(row["embedding"]) if row else None
+
+    def get_embedding(self, bucket: str, hash_: str) -> list[float] | None:
+        blob = self.get_embedding_blob(bucket, hash_)
+        if blob is None:
+            return None
+        dim = self.bucket_dimension(bucket)
+        if not dim:
+            return None
+        return list(struct.unpack(f"<{dim}f", blob))
 
     def _prepare_search_locked(self, bucket: str) -> None:
         if bucket in self._dirty or bucket not in self._quantized:

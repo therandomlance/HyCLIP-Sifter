@@ -8,7 +8,11 @@ from ui.main_window import MainWindow
 def main() -> None:
     app = QApplication(sys.argv)
     app.setApplicationName("HyCLIP Sifter")
-    window = MainWindow()
+    try:
+        window = MainWindow()
+    except Exception:
+        app.quit()
+        return
     window.show()
     sys.exit(app.exec())
 

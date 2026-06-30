@@ -81,6 +81,16 @@ class ClipModel:
                 embedding = self.model.encode_image(tensor, normalize=True)
             return embedding[0].float().cpu().tolist()
 
+    def embed_text(self, text: str) -> list[float]:
+        with self._lock:
+            if self.model is None or self.model_name is None:
+                raise RuntimeError("CLIP model is not loaded")
+            tokenizer = open_clip.get_tokenizer(self.model_name)
+            tokens = tokenizer([text]).to(self.device)
+            with torch.no_grad():
+                embedding = self.model.encode_text(tokens, normalize=True)
+            return embedding[0].float().cpu().tolist()
+
     @property
     def dimension(self) -> int:
         if self.model_name:

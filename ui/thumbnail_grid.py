@@ -35,7 +35,7 @@ def open_containing_folder(path: str) -> None:
     elif sys.platform == "darwin":
         subprocess.Popen(["open", "-R", path])
     else:
-        subprocess.Popen(["xdg-open", folder])
+        QDesktopServices.openUrl(QUrl.fromLocalFile(folder))
 
 
 class ThumbnailGrid(QListWidget):
@@ -60,6 +60,7 @@ class ThumbnailGrid(QListWidget):
         self.setVerticalScrollMode(QListWidget.ScrollPerPixel)
         self.verticalScrollBar().setSingleStep(30)
         self._loader: ThumbnailLoader | None = None
+        self._retiring: list = []
         self._menu_factory = None
         self._anchor_row: int | None = None
         self._drag_start_row: int | None = None
@@ -106,10 +107,11 @@ class ThumbnailGrid(QListWidget):
                 item.setToolTip(tooltips[h])
             self.addItem(item)
         if hashes:
-            self._loader = ThumbnailLoader(self.hydrus, hashes)
-            self._loader.loaded.connect(self._on_loaded)
-            self._loader.finished_all.connect(self._loader.deleteLater)
-            self._loader.start()
+            loader = ThumbnailLoader(self.hydrus, hashes)
+            loader.loaded.connect(self._on_loaded)
+            loader.finished_all.connect(self._on_loader_finished)
+            self._loader = loader
+            loader.start()
 
     def _on_loaded(self, hash_: str, data: bytes) -> None:
         if not data:
@@ -132,13 +134,36 @@ class ThumbnailGrid(QListWidget):
         return None
 
     def _cancel_loader(self) -> None:
-        if self._loader is not None:
+        loader = self._loader
+        self._loader = None
+        if loader is not None:
             try:
-                self._loader.cancel()
-                self._loader.wait(500)
+                loader.loaded.disconnect()
             except Exception:
                 pass
-            self._loader = None
+            try:
+                loader.finished_all.disconnect()
+            except Exception:
+                pass
+            if loader.isRunning():
+                loader.cancel()
+                self._retiring.append(loader)
+                loader.finished.connect(lambda _=None, o=loader: self._retire(o))
+            else:
+                loader.deleteLater()
+
+    def _retire(self, worker) -> None:
+        try:
+            self._retiring.remove(worker)
+        except ValueError:
+            pass
+        worker.deleteLater()
+
+    def _on_loader_finished(self) -> None:
+        worker = self._loader
+        self._loader = None
+        if worker is not None:
+            worker.deleteLater()
 
     def remove_hash(self, hash_: str) -> None:
         item = self._find_item(hash_)
@@ -160,6 +185,10 @@ class ThumbnailGrid(QListWidget):
         item = self.itemAt(pos)
         if item is None:
             return
+        if not item.isSelected():
+            self.clearSelection()
+            item.setSelected(True)
+            self._anchor_row = self.row(item)
         hash_ = item.data(HASH_ROLE)
         global_pos = self.mapToGlobal(pos)
         menu: QMenu

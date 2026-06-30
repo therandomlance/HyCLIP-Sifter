@@ -7,6 +7,13 @@ from clip_model import ClipModel
 from database import Database, SUPPORTED_EXTS
 from hydrus_service import HydrusService
 
+OP_DELETE = 0
+OP_ARCHIVE = 1
+OP_SKIP = 2
+OP_DEFER = 3
+
+DEFER_TAG = "hyclip:defer"
+
 
 class IngestWorker(QThread):
     progress = Signal(int, int, str)
@@ -119,6 +126,9 @@ class SearchWorker(QThread):
         bucket: str,
         query_hash: str | None,
         k: int,
+        text: str = "",
+        text_multiplier: float = 1.0,
+        random: bool = False,
     ) -> None:
         super().__init__()
         self.db = db
@@ -127,31 +137,84 @@ class SearchWorker(QThread):
         self.bucket = bucket
         self.query_hash = query_hash
         self.k = k
+        self.text = text or ""
+        self.text_multiplier = text_multiplier
+        self.random = random
+        self._cancel = False
+
+    def cancel(self) -> None:
+        self._cancel = True
 
     def run(self) -> None:
         try:
-            if self.query_hash is None:
+            if self._cancel:
+                return
+            if self.random or (self.query_hash is None and not self.text):
                 hashes = self.db.random_sample(self.bucket, self.k)
+                if self._cancel:
+                    return
                 self.random_results.emit(hashes)
                 return
-            blob = self.db.get_embedding_blob(self.bucket, self.query_hash)
-            if blob is None:
+
+            image_embedding: list[float] | None = None
+            if self.query_hash is not None:
+                emb = self.db.get_embedding(self.bucket, self.query_hash)
+                if self._cancel:
+                    return
+                if emb is None:
+                    if not self.clip.is_loaded:
+                        self.failed.emit(
+                            f"hash {self.query_hash[:12]}... is not in the bucket and the CLIP model is not loaded to re-embed it"
+                        )
+                        return
+                    try:
+                        file_bytes = self.hydrus.get_file_bytes(self.query_hash)
+                        if self._cancel:
+                            return
+                        emb = self.clip.embed_bytes(file_bytes)
+                    except Exception as exc:
+                        self.failed.emit(f"failed to embed query image: {exc}")
+                        return
+                image_embedding = emb
+            if self._cancel:
+                return
+
+            text_embedding: list[float] | None = None
+            if self.text:
                 if not self.clip.is_loaded:
-                    self.failed.emit(
-                        f"hash {self.query_hash[:12]}... is not in the bucket and the CLIP model is not loaded to re-embed it"
-                    )
+                    self.failed.emit("text search requires the CLIP model to be loaded")
                     return
                 try:
-                    file_bytes = self.hydrus.get_file_bytes(self.query_hash)
-                    embedding = self.clip.embed_bytes(file_bytes)
+                    text_embedding = self.clip.embed_text(self.text)
                 except Exception as exc:
-                    self.failed.emit(f"failed to embed query image: {exc}")
+                    self.failed.emit(f"failed to embed text query: {exc}")
                     return
-                blob = json.dumps(embedding)
+                m = self.text_multiplier
+                text_embedding = [v * m for v in text_embedding]
+            if self._cancel:
+                return
+
+            if image_embedding is not None and text_embedding is not None:
+                if len(image_embedding) != len(text_embedding):
+                    self.failed.emit("image and text embedding dimensions differ")
+                    return
+                combined = [a + b for a, b in zip(image_embedding, text_embedding)]
+                blob = json.dumps(combined)
+            elif text_embedding is not None:
+                blob = json.dumps(text_embedding)
+            elif image_embedding is not None:
+                blob = json.dumps(image_embedding)
+            else:
+                blob = None
+            if self._cancel or blob is None:
+                return
             neighbors = self.db.nearest_neighbors(self.bucket, blob, self.k, exclude_hash=self.query_hash)
+            if self._cancel:
+                return
             self.results.emit(neighbors)
         except Exception as exc:
-            self.failed.emit(str(exc))
+            if not self._cancel:
+                self.failed.emit(str(exc))
 
 
 class ModelLoadWorker(QThread):
@@ -194,3 +257,45 @@ class ThumbnailLoader(QThread):
             except Exception:
                 pass
         self.finished_all.emit()
+
+
+class HydrusOperationWorker(QThread):
+    done = Signal(int, list)
+    failed = Signal(int, list, str)
+
+    def __init__(
+        self,
+        hydrus: HydrusService,
+        operation: int,
+        hashes: list[str],
+        tag_service_key: str = "",
+    ) -> None:
+        super().__init__()
+        self.hydrus = hydrus
+        self.operation = operation
+        self.hashes = list(hashes)
+        self.tag_service_key = tag_service_key
+        self._cancel = False
+
+    def cancel(self) -> None:
+        self._cancel = True
+
+    def run(self) -> None:
+        try:
+            if self.operation == OP_ARCHIVE:
+                self.hydrus.archive(self.hashes)
+            elif self.operation == OP_DELETE:
+                self.hydrus.delete(self.hashes)
+            elif self.operation == OP_DEFER:
+                if not self.tag_service_key:
+                    raise ValueError("no tag service key configured")
+                self.hydrus.add_tags(self.hashes, self.tag_service_key, [DEFER_TAG])
+            elif self.operation == OP_SKIP:
+                pass
+            else:
+                raise ValueError(f"unknown operation: {self.operation}")
+            if not self._cancel:
+                self.done.emit(self.operation, self.hashes)
+        except Exception as exc:
+            if not self._cancel:
+                self.failed.emit(self.operation, self.hashes, str(exc))
