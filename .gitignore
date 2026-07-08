@@ -1,0 +1,7 @@
+.venv
+TODO.md
+thumb_cache
+hyclip_sifter/__pycache__
+hyclip_sifter.db
+hyclip_sifter.ini
+hyclip_sifter.queue.json
