@@ -11,8 +11,7 @@ Desktop application that bridges [open_clip](https://github.com/mlfoundations/op
 
 ```bash
 python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+.venv/bin/pip install -r requirements.txt
 ```
 
 On first run, a dialog will prompt for your Hydrus API URL and access key. If you skip this or cancel, the app exits. YOu can edit `hyclip_sifter.ini` to configure it manually.
@@ -20,8 +19,7 @@ On first run, a dialog will prompt for your Hydrus API URL and access key. If yo
 ## Quick Start
 
 ```bash
-source .venv/bin/activate
-python -m hyclip_sifter
+./run.sh
 ```
 
 1. **Load** the CLIP model (Ingest tab)
