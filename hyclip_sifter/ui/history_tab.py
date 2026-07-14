@@ -276,3 +276,13 @@ class HistoryTab(QWidget):
         if self._trash_worker is not None:
             self._trash_worker.cancel()
             self._trash_worker.wait(2000)
+            try:
+                self._trash_worker.disconnect()
+            except (TypeError, RuntimeError):
+                pass
+            try:
+                self._trash_worker.deleteLater()
+            except RuntimeError:
+                pass
+            self._trash_worker = None
+        self.grid.cleanup()

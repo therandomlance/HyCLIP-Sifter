@@ -80,9 +80,15 @@ class HydrusCheckWorker(_Cancellable):
         self._tag_service_key = tag_service_key
 
     def run(self) -> None:
+        if self.cancelled:
+            return
         try:
             version = self._hydrus.get_api_version()
+            if self.cancelled:
+                return
             perms = self._hydrus.verify_access_key()
+            if self.cancelled:
+                return
             api_v = version.get("version", "?")
             perm_names: list[str] = []
             basic = perms.get("basic_permissions") or []
@@ -93,15 +99,20 @@ class HydrusCheckWorker(_Cancellable):
                 perm_names.append(label_map.get(code, str(code)))
             parts = [f"API v{api_v}", "perms: " + (", ".join(perm_names) or "none")]
             if self._tag_service_key:
+                if self.cancelled:
+                    return
                 try:
                     self._hydrus.get_service(self._tag_service_key)
                     parts.append("tag service OK")
                 except Exception as exc:
                     self.failed.emit(f"Tag service key invalid: {exc}")
                     return
+            if self.cancelled:
+                return
             self.ok.emit(" — ".join(parts))
         except Exception as exc:  # noqa: BLE001
-            self.failed.emit(str(exc))
+            if not self.cancelled:
+                self.failed.emit(str(exc))
 
 
 # ============================================================================
@@ -187,6 +198,9 @@ class IngestWorker(_Cancellable):
                     done += len(raw)
                     self.progress.emit(done, total, "batch embed failed")
                     continue
+                if self.cancelled:
+                    self.log.emit("ingest cancelled")
+                    break
                 # Store.
                 items = [(h, v) for (h, _), v in zip(raw, vectors)]
                 self._db.add_embeddings_batch(self._bucket, items)
@@ -313,7 +327,7 @@ class SearchWorker(_Cancellable):
             batch: list[tuple[str, float]] = []
             for h, d in self._db.nearest_neighbors_stream(self._bucket, blob, self._k, exclude):
                 if self.cancelled:
-                    break
+                    return
                 results.append((h, d))
                 batch.append((h, d))
                 if len(batch) >= 20:

@@ -207,18 +207,46 @@ class ThumbnailGrid(QListWidget):
         self._loader.start()
 
     def _loader_done(self) -> None:
-        sender = self.sender()
-        if sender is not None:
-            try:
-                sender.disconnect()
-                sender.deleteLater()
-            except (TypeError, RuntimeError):
-                pass
-        if sender is self._loader:
+        loader = self._loader
+        if loader is not None:
+            self._retire_loader(loader)
             self._loader = None
         # If more hashes accumulated while the loader was running, start a new one.
         if self._pending:
             self._load_pending()
+
+    def _retire_loader(self, loader: ThumbnailLoader | None) -> None:
+        """Disconnect, cancel, and arrange async deletion without blocking.
+
+        Implements the ``_retire`` pattern from AGENTS.md: the loader's signals
+        are disconnected so late emissions can't reach the grid, the cancel flag
+        is set, and deletion is deferred to the loader's ``finished`` signal so
+        the UI thread never blocks on ``QThread.wait()``.
+        """
+        if loader is None:
+            return
+        try:
+            loader.loaded.disconnect(self._on_thumb)
+            loader.finished_all.disconnect(self._loader_done)
+        except (TypeError, RuntimeError):
+            pass
+        loader.cancel()
+        if loader.isFinished():
+            loader.deleteLater()
+            return
+        loader.finished.connect(lambda l=loader: self._on_retired(l))
+        self._retiring.append(loader)
+
+    def _on_retired(self, loader: ThumbnailLoader) -> None:
+        """Drop a retired loader once its thread has finished."""
+        try:
+            self._retiring.remove(loader)
+        except ValueError:
+            pass
+        try:
+            loader.deleteLater()
+        except RuntimeError:
+            pass
 
     def _on_thumb(self, hash_: str, data: bytes) -> None:
         item = self._hash_to_item.get(hash_)
@@ -252,32 +280,25 @@ class ThumbnailGrid(QListWidget):
         self._pending.clear()
 
     def _cancel_loader(self) -> None:
-        """Cancel and clean up the active loader (for clear/shutdown)."""
-        if self._loader is not None:
-            try:
-                self._loader.loaded.disconnect(self._on_thumb)
-                self._loader.finished_all.disconnect(self._loader_done)
-            except (TypeError, RuntimeError):
-                pass
-            self._loader.cancel()
-            self._loader.wait(2000)
-            try:
-                self._loader.deleteLater()
-            except RuntimeError:
-                pass
-            self._loader = None
+        """Retire the active loader without blocking the UI thread."""
+        self._retire_loader(self._loader)
+        self._loader = None
+
+    def cleanup(self) -> None:
+        """Cancel and wait for any thumbnail loaders (used during shutdown)."""
+        self._retire_loader(self._loader)
+        self._loader = None
         for lo in list(self._retiring):
             lo.cancel()
             lo.wait(2000)
             try:
+                self._retiring.remove(lo)
+            except ValueError:
+                pass
+            try:
                 lo.deleteLater()
             except RuntimeError:
                 pass
-        self._retiring.clear()
-
-    def cleanup(self) -> None:
-        """Cancel and wait for any thumbnail loaders (used during shutdown)."""
-        self._cancel_loader()
 
     def set_duplicates(self, pairs: list[tuple[str, str, float]]) -> None:
         self._dup_pairs = pairs

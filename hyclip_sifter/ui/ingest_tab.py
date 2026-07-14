@@ -39,7 +39,6 @@ class IngestTab(QWidget):
         self._check_worker: HydrusCheckWorker | None = None
         self._ingest_worker: IngestWorker | None = None
         self._queue: list[dict] = []  # each: {bucket, hashes, done, total}
-        self._retiring: list = []
         self._build_ui()
         self.refresh_buckets()
         self._update_model_status()
@@ -581,6 +580,7 @@ class IngestTab(QWidget):
             if w is not None:
                 w.cancel()
                 w.wait(2000)
+                self._finalize_worker(attr)
         self._save_queue()
 
     def on_theme_changed(self) -> None:

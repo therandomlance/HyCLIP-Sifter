@@ -82,7 +82,6 @@ class SearchTab(QWidget):
         self._search_worker: SearchWorker | None = None
         self._triage_worker: HydrusOperationWorker | None = None
         self._dedup_worker: DedupWorker | None = None
-        self._retiring: list = []
         self._query_hash: str | None = None
         self._query_bytes: bytes | None = None
         self._query_embedding: list[float] | None = None
@@ -478,6 +477,7 @@ class SearchTab(QWidget):
             self._push_history()
         if self._search_worker is not None:
             self._search_worker.cancel()
+            self._finalize_worker("_search_worker")
         self.result_label.setText("0 results")
         self.grid.clear_all()
         self.status_message.emit(f"Searching {bucket!r}…")
@@ -506,6 +506,7 @@ class SearchTab(QWidget):
         self.query_thumb.clear_image()
         if self._search_worker is not None:
             self._search_worker.cancel()
+            self._finalize_worker("_search_worker")
         self.grid.clear_all()
         k = self.results_spin.value()
         self._search_worker = SearchWorker(
@@ -530,10 +531,12 @@ class SearchTab(QWidget):
             f"{self.grid.count()} results from {self.bucket_combo.currentText()!r}"
         )
         self.status_message.emit(f"Search complete: {len(results)} results")
+        self._finalize_worker("_search_worker")
 
     def _on_random(self, hashes: list) -> None:
         self.grid.set_hashes(hashes)
         self.result_label.setText(f"{len(hashes)} random samples from {self.bucket_combo.currentText()!r}")
+        self._finalize_worker("_search_worker")
 
     def _on_search_failed(self, msg: str) -> None:
         self._finalize_worker("_search_worker")
@@ -607,6 +610,7 @@ class SearchTab(QWidget):
         operation, hashes, bucket = pending
         if self._triage_worker is not None:
             self._triage_worker.cancel()
+            self._finalize_worker("_triage_worker")
         self._triage_worker = HydrusOperationWorker(
             self._db, self._hydrus, bucket, operation, hashes,
             tag_service_key=self._config.hydrus_tag_service_key,
@@ -726,6 +730,7 @@ class SearchTab(QWidget):
             if w is not None:
                 w.cancel()
                 w.wait(2000)
+                self._finalize_worker(attr)
         # Grid thumbnail loaders.
         self.grid.cleanup()
 
