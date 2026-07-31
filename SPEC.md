@@ -34,13 +34,19 @@ A `.ini` file (default `hyclip_sifter.ini`, resolved against the current working
 | `hydrus` | `api_key` | *(empty)* | Hydrus API access key |
 | `hydrus` | `tag_service_key` | *(empty)* | Key of the tag service used for the "Defer" operation |
 | `hydrus` | `rating_service_key` | *(empty)* | Key of the rating service (stored for future use) |
+| `hydrus` | `retries` | `3` | Number of retry attempts for transient Hydrus API failures |
+| `hydrus` | `retry_delay_ms` | `1000` | Delay between Hydrus API retries in milliseconds |
 | `clip` | `model` | `ViT-B-16-SigLIP2` | open_clip model name |
 | `clip` | `load_on_startup` | `false` | Whether to auto-load the CLIP model on launch |
 | `ui` | `thumbnail_size` | `400` | Default thumbnail size in pixels |
 | `ui` | `search_size` | `50` | Default number of search results |
-| `ui` | `confirm_triage` | `true` | Whether to show confirmation dialogs before triage operations |
-| `ui` | `hydrus_retries` | `3` | Number of retry attempts for transient Hydrus API failures |
-| `ui` | `hydrus_retry_delay_ms` | `1000` | Delay between Hydrus API retries in milliseconds |
+| `ui` | `confirm_triage` | `true` | Whether to show confirmation prompts before triage operations |
+| `ui` | `theme` | `system` | UI theme: `system`, `dark`, or `light` |
+| `ui` | `stylesheet` | *(empty)* | Optional path to a `.qss` file loaded after the built-in theme |
+| `ui` | `thumbnail_cache_dir` | `./thumb_cache/` | Directory for cached thumbnails |
+| `ui` | `ingest_batch_size` | `0` | Batch size for embedding (0 = auto: 8 on GPU, 1 on CPU) |
+
+An automatic migration moves legacy `[ui]` keys `hydrus_retries` / `hydrus_retry_delay_ms` to `[hydrus]` as `retries` / `retry_delay_ms`.
 
 The config system automatically backfills missing keys/sections with defaults so the file can be hand-edited without breaking.
 
@@ -59,7 +65,7 @@ When `load_on_startup` is `true`, the CLIP model loading begins automatically on
 
 ### 2.4 Window Geometry Persistence
 
-The window size and position are saved on close and restored on next launch using `QSettings`. The initial default is computed from `screen().availableGeometry()` rather than hardcoded dimensions.
+The window size and position are saved on close and restored on next launch using `QSettings`. When no saved geometry exists, the window is sized to 75% of `screen().availableGeometry()` (width and height) and centered on screen.
 
 ---
 
@@ -79,7 +85,7 @@ The database uses SQLite WAL journal mode to reduce lock contention between conc
 | Column | Type | Description |
 |--------|------|-------------|
 | `name` | TEXT PK | Bucket name (validated: no spaces, `[A-Za-z0-9_-]` only) |
-| `dimension` | INTEGER | Embedding vector dimension for this bucket |
+| `dimension` | INTEGER NOT NULL | Embedding vector dimension for this bucket |
 
 **`history` table:**
 | Column | Type | Description |
@@ -90,6 +96,8 @@ The database uses SQLite WAL journal mode to reduce lock contention between conc
 | `timestamp` | TEXT | ISO-8601 timestamp of when the operation was performed |
 
 History is ordered by `timestamp DESC` (falling back to `rowid DESC` for pre-migration records).
+
+An index `history_bucket_op_idx` on `(bucket, operation)` is created for query performance.
 
 **Per-bucket tables:** Named `bucket_{bucket_name}`:
 | Column | Type | Description |
@@ -119,18 +127,23 @@ Quantization of newly-written embeddings is deferred to a background thread and 
 | `bucket_dimension(name)` | Returns embedding dimension for a bucket |
 | `bucket_count(name)` | Returns count of hashes in a bucket |
 | `add_embedding(bucket, hash, embedding)` | Inserts/replaces embedding into bucket table |
+| `add_embeddings_batch(bucket, items)` | Inserts/replaces multiple `(hash, embedding)` tuples in one transaction |
 | `has_hash(bucket, hash)` | Checks if hash exists in bucket |
 | `get_embedding(bucket, hash)` | Decodes blob to list of floats |
 | `nearest_neighbors(bucket, query_blob, k, exclude_hash)` | Returns top-k results as `[(hash, distance)]` |
+| `nearest_neighbors_stream(bucket, query_blob, k, exclude_hash)` | Same as `nearest_neighbors` but yields results incrementally for progressive grid loading |
 | `random_sample(bucket, k)` | Returns k random hashes from bucket |
 | `remove_from_bucket(bucket, hash, operation)` | Deletes hash from bucket, records in history with timestamp |
-| `restore_to_bucket(bucket, hash)` | Re-inserts a hash from history back into a bucket (requires re-embedding) |
-| `history_query(bucket, operation, limit)` | Returns hashes from history for given bucket/op, newest first |
-| `history_query_filtered(bucket, operation, limit, search)` | Returns hashes from history matching a text filter on the hash prefix |
+| `remove_from_bucket_silent(bucket, hash)` | Deletes hash from bucket without recording a history entry (used by Copy/Move) |
+| `restore_to_bucket(bucket, hash, embedding)` | Re-inserts a hash from history back into a bucket with a fresh embedding |
+| `quantize_now(bucket)` | Force quantization (e.g. from a background thread) |
+| `history_query(bucket, operation, limit, date_from, date_to)` | Returns hashes from history for given bucket/op, newest first, with optional date range |
+| `history_query_filtered(bucket, operation, limit, search, date_from, date_to)` | Returns hashes from history matching a text filter on the hash prefix, with optional date range |
+| `history_count(bucket, operation, search, date_from, date_to)` | Returns total count of matching history entries (for live count preview) |
 | `history_buckets()` | Returns `[(bucket, count)]` for all buckets with history |
 | `history_counts(bucket)` | Returns `{operation: count}` summary for a bucket |
 | `history_export_csv(bucket, operation)` | Exports matching history rows to a CSV file |
-| `verify_integrity()` | Checks for orphaned vector indices or history entries referencing deleted buckets |
+| `verify_integrity()` | Checks for orphaned bucket tables or history entries referencing deleted buckets |
 
 ### 3.5 Embedding Storage Format
 
@@ -199,7 +212,7 @@ Uses the `hydrus-api` Python package. Configured with the API URL and access key
 | `verify_access_key()` | GET verify | Check access key validity |
 | `get_service(service_key)` | GET service | Check service key validity |
 | `get_api_version()` | GET version | Get Hydrus API version |
-| `get_file_search(hashes)` | POST search | Fetch hashes matching a Hydrus search query |
+| `search_files(tags)` | GET search | Search Hydrus by tags, return matching hashes |
 
 ### 5.3 Extension Filtering
 
@@ -225,27 +238,29 @@ A `QMainWindow` with:
   - **Edit:** Copy (copies selected hash), Select All / Deselect All / Invert Selection
   - **View:** Theme submenu (Dark / Light / System default), Thumbnail Size submenu (Small 150px / Medium 300px / Large 450px presets)
   - **Help:** About, Keyboard Shortcuts reference (opens a non-modal reference popup)
-- A **thin toolbar** below the menu bar with context-sensitive actions (visible on all tabs):
-  - Search tab: Back/Forward search history navigation, Stop Search button
-  - Ingest tab: Load Model / Eject Model buttons visible regardless of scroll position
+- A **thin toolbar** below the menu bar with persistent actions visible on all tabs:
+  - Back/Forward search history navigation
+  - Stop Search button
+  - Load Model / Eject Model buttons
 - A **status bar** with:
   - Left: current operation/status message text
   - Right: persistent status indicator row — model state icon (`🧠 Not loaded` or `🧠 ViT-B-16 (CUDA)`), Hydrus connection dot (green/red), bucket count badge
   - Styled with a slightly darker background and 1px top border to separate from content
-- A `QTabWidget` with three tabs in workflow order: **Ingest | Search | History**
-  - On first launch (no model loaded, no buckets exist): defaults to the Ingest tab
-  - If a first-launch state is detected, a thin banner appears at the top of every tab: *"Welcome! ① Load the CLIP model → ② Create a bucket → ③ Ingest hashes → ④ Start searching"* — each step number is a clickable link that navigates to the relevant control
+- A `QTabWidget` with three tabs in workflow order: **Search | Ingest | History**
+  - On first launch (no model loaded, no buckets exist): defaults to the Search tab
+  - If a first-launch state is detected, a thin static banner appears at the top of every tab: *"Welcome! ① Load the CLIP model → ② Create a bucket → ③ Ingest hashes → ④ Start searching"*
 - Built-in theme switching (dark/light/system) via `View` menu or config setting. All colors use semantic CSS-like role names defined in QSS (see section 16), not hardcoded inline `setStyleSheet` calls. Roles include `--color-primary`, `--color-archive`, `--color-delete`, `--color-defer`, `--color-skip`, `--color-surface`, `--color-border`.
 - Support for user-provided QSS stylesheets: a `ui.stylesheet` config key points to a `.qss` file loaded after the built-in theme, overriding any widget style
-- **QSplitter** sidebars on Search and History tabs (not fixed-width): initial split at 260px, collapsible to 180px, user-draggable
+- **QSplitter** sidebars on Search and History tabs (not fixed-width): initial split at 300px, user-draggable
 - Consistent spacing: all section frames use 12px internal padding, 8px between adjacent sections, 4px vertical / 6px horizontal spacing between paired controls
 - Standardized button sizes: primary action buttons 28–32px tall, secondary buttons 24–28px tall, icon-only buttons square at 28×28px
-- Clean shutdown on close: cancels all running workers, waits up to 2 seconds each (non-blocking via `finished` signal gates), closes DB only after confirming no workers access it, unloads CLIP model, saves window geometry
+- Clean shutdown on close: each tab's `cleanup()` cancels all running workers, waits up to 2 seconds each, ejects the CLIP model, closes the database, and saves window geometry
 
 Cross-tab signals:
 - `buckets_changed`: emitted by Ingest and Search tabs, triggers refresh of all tab bucket lists
-- `model_state_changed`: emitted by Ingest tab, triggers refresh of Search tab model-dependent controls
+- `model_state_changed`: emitted by Ingest tab, triggers refresh of Search tab model-dependent controls, updates the model indicator in the status bar, and hides the welcome banner if conditions are met
 - `search_with_image(hash)`: emitted by History tab, switches to Search tab and runs a search with that hash as the query
+- `status_message(str)`: emitted by Ingest and Search tabs, updates the status bar message
 
 ### 6.2 Search Tab
 
@@ -294,7 +309,7 @@ The sidebar is divided into three visually-distinct groups separated by `QFrame`
 4. **Search configuration:**
    - **Bucket selector:** `QComboBox` listing all buckets
    - **Number of results:** `QSpinBox` 1–2000, default from config
-   - **Thumbnail size:** `QSpinBox` 48–512, step 25, suffix " px", default from config. Changes the grid's icon size in real time
+    - **Thumbnail size:** `QSpinBox` 48–1000, step 25, suffix " px", default from config. Changes the grid's icon size in real time
 
 5. **Primary action buttons:**
    - **Search** (full-width, accent color): Runs nearest-neighbor search with current query
@@ -356,7 +371,7 @@ Above the thumbnail grid, a small header bar shows:
 1. User selects one or more thumbnails (click, drag-range, Shift+Click, Ctrl+Click, or `Ctrl+A`)
 2. The floating triage bar appears at the bottom of the grid showing the selection count
 3. User clicks a triage button in the floating bar, presses a keyboard shortcut (A/D/S/F), or uses the context menu
-4. If `confirm_triage` is enabled in config, a non-blocking **toast notification** slides up at the bottom of the grid: `"Archive 5 images? [Yes] [No]"` — auto-dismisses after 5 seconds (no = timeout). This replaces modal `QMessageBox` dialogs.
+4. If `confirm_triage` is enabled in config, an inline confirmation prompt appears: `"Archive 5 images? [Yes] [Cancel]"` below the triage buttons (in both the sidebar and the floating bar). Clicking Yes proceeds, Cancel or re-selecting aborts.
 5. While the operation is in-flight, the triage button text changes to show a spinner + progress: `"Archiving 5..."`
 6. On success: each hash is removed from the database bucket (recorded in history) and the thumbnail fades out of the grid. A toast confirms: `"Archived 5 images"` (auto-dismiss 3s)
 7. The `buckets_changed` signal is emitted to update counts elsewhere
@@ -371,7 +386,6 @@ Above the thumbnail grid, a small header bar shows:
 | `D` | Grid has selection | Delete selected |
 | `S` | Grid has selection | Skip selected |
 | `F` | Grid has selection | Defer selected |
-| `Delete` | Grid has selection | Delete selected (same as D) |
 | `Ctrl+A` / `Cmd+A` | Grid focused | Select all thumbnails |
 | `Ctrl+Shift+A` | Grid focused | Deselect all |
 | `Ctrl+I` | Grid focused | Invert selection |
@@ -386,9 +400,9 @@ Above the thumbnail grid, a small header bar shows:
 | `Home` | Grid focused | Jump to first thumbnail |
 | `End` | Grid focused | Jump to last thumbnail |
 | `Page Up/Down` | Grid focused | Jump one page of thumbnails |
-| `Escape` | Search tab | Deselect all / clear query |
-| `Ctrl+1/2/3` | Any | Switch to Ingest / Search / History tab |
+| `Ctrl+1/2/3` | Any | Switch to Search / Ingest / History tab |
 | `Ctrl+P` | Any | Open Preferences dialog |
+| `Ctrl+Q` | Any | Quit application |
 | `F5` | History tab | Refresh history search |
 
 Shortcut hints appear in button tooltips and in the Keyboard Shortcuts reference window accessible from the Help menu.
@@ -463,7 +477,7 @@ The left column (Buckets, ~280px) and right column (Add to Bucket, filling remai
 [■ 42 in bucket]  [■ 5 archived]  [■ 3 deleted]  [■ 1 skipped]  [■ 2 deferred]
 ```
 
-Each badge is a small `QFrame` with rounded corners and a color (blue for active, green for archived, red for deleted, yellow for skipped, purple for deferred). Clicking a badge switches to the History tab pre-filtered to that bucket and operation.
+Each badge is a small `QFrame` with rounded corners and a color (blue for active, green for archived, red for deleted, yellow for skipped, purple for deferred).
 
 **Add to Bucket column:**
 - **Hash text area:** Multi-line `QTextEdit` for pasting SHA256 hashes. Supports drag-and-drop of `.txt` files. Stretches to fill available vertical space.
@@ -553,8 +567,7 @@ The ingest worker can be cancelled mid-job; already-embedded hashes remain in th
 │                               │
 │  Date from: [2024-01-01  ]    │
 │  Date to:   [2024-12-31  ]   │
-│  Hash filter: [__________]    │
-│                               │
+│                                │
 │  Thumbnail size: [300 px ]    │
 │  Limit: [100           ]      │
 │                               │
@@ -568,8 +581,6 @@ The ingest worker can be cancelled mid-job; already-embedded hashes remain in th
 **Live count preview:** As the user changes the bucket or operation, a lightweight count query runs (background thread) and displays `"N matching entries"` below the selector. This lets users gauge data volume before browsing.
 
 **Date range filter:** Compact `QDateEdit` widgets (From/To) with a small "Clear" link button to reset.
-
-**Hash filter:** `QLineEdit` for filtering by partial hash string prefix.
 
 **Thumbnail size:** Same `QSpinBox` as Search tab, synchronized from config.
 
@@ -585,7 +596,7 @@ The ingest worker can be cancelled mid-job; already-embedded hashes remain in th
 - Tooltips show `"hash\ntimestamp: YYYY-MM-DD HH:MM"` for history entries
 - Context menu (cached and updated on `aboutToShow`):
   - **Search using this image** — emits `search_with_image(hash_)`, which the MainWindow catches to switch to the Search tab and run a search
-  - **Re-ingest into bucket** — prompts for a target bucket and re-embeds the hash into that bucket (useful for recovering accidentally-skipped images)
+  - **Re-ingest into bucket** — (defined on the grid but not yet connected in the History tab)
   - **Remove from trash** (for Deleted entries) — calls Hydrus `undelete_files` API to restore the file from trash
   - *(separator)*
   - **Open externally** — opens the file with the system default application (if local path available)
@@ -611,13 +622,14 @@ All workers extend `QThread` directly (not `QObject` + `moveToThread`).
 | `HydrusCheckWorker` | Verify Hydrus API/settings | `ok(str)`, `failed(str)` |
 | `HydrusOperationWorker` | Execute triage operations via Hydrus API (with retry) | `done(int, list)`, `failed(int, list, str)` |
 | `DedupWorker` | Run deduplication scans on a bucket | `results(list)`, `failed(str)` |
+| `UndeleteWorker` | Undelete files from Hydrus trash | `done(list)`, `failed(str)` |
 
 ### 7.2 Worker Lifecycle
 
 1. Worker is instantiated with references to shared services (DB, CLIP, Hydrus)
 2. Signals are connected; old signal connections from prior workers are explicitly disconnected before new ones are created
 3. `worker.start()` begins background work
-4. On `finished`, the worker reference is set to `None` and `deleteLater()` is called
+4. Once the worker's final signal handler completes, the worker is disconnected and `deleteLater()` is called
 5. **Cancellation:** Setting `_cancel = True` (checked at strategic points in `run()`) causes early termination. The flag uses `threading.Lock` or `QMutex` for proper synchronization.
 6. **Retirement pattern:** When replacing a running worker, its signals are disconnected, it's cancelled, added to a `_retiring` list, and the `finished` signal (not a blocking `wait()`) triggers removal from the list and `deleteLater()`
 
@@ -684,11 +696,11 @@ Python 3.12+ required.
 7. Create `MainWindow`:
    - Restore window geometry from `QSettings` if available, otherwise size to 75% of `screen().availableGeometry()`
    - Set title, create menu bar, toolbar, and styled status bar with persistent model/connection indicators
-   - Create three tabs in workflow order (Ingest, Search, History)
-   - Apply QSS stylesheet if configured
-   - Wire cross-tab signals
-   - Refresh all tab bucket lists
-   - If no model is loaded and no buckets exist: default to Ingest tab and show first-launch wizard banner
+    - Create three tabs in workflow order (Search, Ingest, History)
+    - Apply QSS stylesheet if configured
+    - Wire cross-tab signals
+    - Refresh all tab bucket lists
+    - If no model is loaded and no buckets exist: default to Search tab and show first-launch banner
    - If `load_on_startup`: trigger model load
 
 ---
@@ -756,7 +768,7 @@ ThumbnailGrid.remove_hash() + history record
 History tab "Remove from trash" action
        │
        ▼
-HydrusOperationWorker ──► Hydrus API (undelete_files)
+UndeleteWorker ──► Hydrus API (undelete_files)
        │
        ▼
 Status update only (no bucket or history changes)
@@ -786,7 +798,7 @@ Thumbnails are cached to a local directory (configurable via `ui.thumbnail_cache
 
 - Cache is keyed by SHA256 hash, stored as `{hash[:2]}/{hash}.jpg` to avoid too many files in one directory
 - Before fetching a thumbnail from Hydrus, the cache is checked first
-- Cache is append-only (no eviction); the user can clear it manually via a button in the Ingest tab or by deleting the directory
+- Cache is append-only (no eviction); the user can clear it manually via the "Clear thumbnail cache" button in the Ingest tab, which walks the cache directory and deletes all files
 - Cache misses fall through to the Hydrus API, and the result is written to the cache for future use
 
 ---
