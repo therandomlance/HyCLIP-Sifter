@@ -1,11 +1,11 @@
-"""Main window: tabs, menu/toolbar/statusbar, cross-tab wiring, lifecycle."""
+"""Main window: tabs, menu/statusbar, cross-tab wiring, lifecycle."""
 
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, QSettings, QTimer
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
-    QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QToolBar,
+    QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel,
     QMessageBox, QApplication, QDialog,
 )
 
@@ -35,7 +35,6 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._wire_signals()
         self._refresh_all_buckets()
-        self._maybe_show_wizard_banner()
         if self._config.load_on_startup:
             QTimer.singleShot(100, self.ingest_tab.load_model)
 
@@ -75,7 +74,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(container)
 
         self._build_menu()
-        self._build_toolbar()
         self._build_status_bar()
 
     def _build_menu(self) -> None:
@@ -132,30 +130,6 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about)
         help_menu.addAction(shortcuts)
 
-    def _build_toolbar(self) -> None:
-        tb = QToolBar("toolbar")
-        tb.setMovable(False)
-        tb.setFloatable(False)
-        # Back / Forward search history (search tab actions).
-        self.back_act = QAction("◀ Back", self)
-        self.fwd_act = QAction("Forward ▶", self)
-        self.stop_act = QAction("Stop Search", self)
-        self.load_act = QAction("Load Model", self)
-        self.eject_act = QAction("Eject Model", self)
-        self.back_act.triggered.connect(self.search_tab.go_back)
-        self.fwd_act.triggered.connect(self.search_tab.go_forward)
-        self.stop_act.triggered.connect(self._stop_search)
-        self.load_act.triggered.connect(self.ingest_tab.load_model)
-        self.eject_act.triggered.connect(self.ingest_tab.eject_model)
-        tb.addAction(self.back_act)
-        tb.addAction(self.fwd_act)
-        tb.addSeparator()
-        tb.addAction(self.stop_act)
-        tb.addSeparator()
-        tb.addAction(self.load_act)
-        tb.addAction(self.eject_act)
-        self.addToolBar(tb)
-
     def _build_status_bar(self) -> None:
         sb = self.statusBar()
         self.status_msg = QLabel("Ready")
@@ -170,37 +144,11 @@ class MainWindow(QMainWindow):
         sb.addPermanentWidget(self.hydrus_indicator)
         sb.addPermanentWidget(self.bucket_indicator)
 
-    def _maybe_show_wizard_banner(self) -> None:
-        no_model = not self._clip.is_loaded
-        no_buckets = not self._db.list_buckets()
-        self._banner: QWidget | None = None
-        if no_model or no_buckets:
-            banner = QLabel(
-                "Welcome! ① Load the CLIP model → ② Create a bucket → "
-                "③ Ingest hashes → ④ Start searching"
-            )
-            banner.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            banner.setStyleSheet("padding: 4px; border-bottom: 1px solid #3a3a3a;")
-            self._banner = banner
-            self._container_layout.insertWidget(0, banner)
-            self.tabs.setCurrentIndex(0)
-
-    def _maybe_hide_banner(self) -> None:
-        banner = getattr(self, "_banner", None)
-        if banner is None:
-            return
-        if self._clip.is_loaded and self._db.list_buckets():
-            banner.hide()
-            self._container_layout.removeWidget(banner)
-            banner.deleteLater()
-            self._banner = None
-
     # ----------------------------------------------------------- wiring
     def _wire_signals(self) -> None:
         self.ingest_tab.buckets_changed.connect(self._on_buckets_changed)
         self.search_tab.buckets_changed.connect(self._on_buckets_changed)
         self.ingest_tab.model_state_changed.connect(self.search_tab.on_model_state_changed)
-        self.ingest_tab.model_state_changed.connect(self._maybe_hide_banner)
         self.ingest_tab.model_state_changed.connect(self._update_model_indicator)
         self.ingest_tab.status_message.connect(self._set_status)
         self.search_tab.status_message.connect(self._set_status)
@@ -215,7 +163,6 @@ class MainWindow(QMainWindow):
     def _on_buckets_changed(self) -> None:
         self._refresh_all_buckets()
         self._update_bucket_indicator()
-        self._maybe_hide_banner()
 
     def _refresh_all_buckets(self) -> None:
         self.ingest_tab.refresh_buckets(current=self.ingest_tab._current_bucket())
@@ -263,10 +210,6 @@ class MainWindow(QMainWindow):
         key = self._config.theme
         for k, act in getattr(self, "_theme_actions", {}).items():
             act.setChecked(k == key)
-
-    def _stop_search(self) -> None:
-        if self.search_tab._search_worker is not None:
-            self.search_tab._search_worker.cancel()
 
     def copy_selected_hash(self) -> None:
         grid = self._current_grid()

@@ -5,7 +5,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from collections import deque
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QAction, QKeySequence
@@ -86,9 +85,6 @@ class SearchTab(QWidget):
         self._query_bytes: bytes | None = None
         self._query_embedding: list[float] | None = None
         self._negative_hash: str | None = None
-        self._history: deque[tuple[str | None, str, float, bool]] = deque()
-        self._history_idx: int = -1
-        self._suppress_history: bool = False
         self._build_ui()
         self.refresh_buckets()
         self._update_button_states()
@@ -415,59 +411,6 @@ class SearchTab(QWidget):
         self.text_input.clear()
         self.grid.deselect_all()
 
-    # ----------------------------------------------------------- search history
-    def _push_history(self) -> None:
-        entry = (
-            self._query_hash,
-            self.text_input.text().strip(),
-            self.text_weight.value(),
-            self.text_sign.isChecked(),
-        )
-        # Drop any forward history when a new search is performed.
-        if self._history_idx >= 0 and self._history_idx < len(self._history) - 1:
-            del self._history[self._history_idx + 1:]
-        if self._history and self._history[-1] == entry:
-            return
-        self._history.append(entry)
-        self._history_idx = len(self._history) - 1
-
-    def go_back(self) -> None:
-        if self._history_idx <= 0:
-            return
-        self._history_idx -= 1
-        self._restore_history_entry(self._history[self._history_idx])
-
-    def go_forward(self) -> None:
-        if self._history_idx >= len(self._history) - 1:
-            return
-        self._history_idx += 1
-        self._restore_history_entry(self._history[self._history_idx])
-
-    def _restore_history_entry(self, entry) -> None:
-        query_hash, text, weight, negative = entry
-        self._suppress_history = True
-        try:
-            self._query_hash = query_hash
-            self._query_bytes = None
-            self._query_embedding = None
-            bucket = self.bucket_combo.currentText()
-            if bucket and query_hash and self._db.has_hash(bucket, query_hash):
-                self._query_embedding = self._db.get_embedding(bucket, query_hash)
-            self.text_input.setText(text)
-            self.text_weight.setValue(weight)
-            self.text_sign.setChecked(negative)
-            if query_hash:
-                try:
-                    data = self._hydrus.get_thumbnail(query_hash)
-                    self.query_thumb.set_image(data, query_hash)
-                except Exception:
-                    self.query_thumb.clear_image()
-            else:
-                self.query_thumb.clear_image()
-            self.run_search()
-        finally:
-            self._suppress_history = False
-
     # ----------------------------------------------------------- search
     def run_search(self, multi: list[str] | None = None) -> None:
         bucket = self.bucket_combo.currentText()
@@ -478,8 +421,6 @@ class SearchTab(QWidget):
         text = self.text_input.text().strip()
         weight = self.text_weight.value()
         negative = self.text_sign.isChecked()
-        if not self._suppress_history and multi is None:
-            self._push_history()
         if self._search_worker is not None:
             self._search_worker.cancel()
             self._finalize_worker("_search_worker")

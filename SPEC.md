@@ -238,17 +238,11 @@ A `QMainWindow` with:
   - **Edit:** Copy (copies selected hash), Select All / Deselect All / Invert Selection
   - **View:** Theme submenu (Dark / Light / System default)
   - **Help:** About, Keyboard Shortcuts reference (opens a non-modal reference popup)
-- A **thin toolbar** below the menu bar with persistent actions visible on all tabs:
-  - Back/Forward search history navigation
-  - Stop Search button
-  - Load Model / Eject Model buttons
 - A **status bar** with:
   - Left: current operation/status message text
   - Right: persistent status indicator row — model state icon (`🧠 Not loaded` or `🧠 ViT-B-16 (CUDA)`), Hydrus connection dot (green/red), bucket count badge
   - Styled with a slightly darker background and 1px top border to separate from content
 - A `QTabWidget` with three tabs in workflow order: **Search | Ingest | History**
-  - On first launch (no model loaded, no buckets exist): defaults to the Search tab
-  - If a first-launch state is detected, a thin static banner appears at the top of every tab: *"Welcome! ① Load the CLIP model → ② Create a bucket → ③ Ingest hashes → ④ Start searching"*
 - Built-in theme switching (dark/light/system) via `View` menu or config setting. All colors use semantic CSS-like role names defined in QSS (see section 16), not hardcoded inline `setStyleSheet` calls. Roles include `--color-primary`, `--color-archive`, `--color-delete`, `--color-defer`, `--color-skip`, `--color-surface`, `--color-border`.
 - Support for user-provided QSS stylesheets: a `ui.stylesheet` config key points to a `.qss` file loaded after the built-in theme, overriding any widget style
 - **QSplitter** sidebars on Search and History tabs (not fixed-width): initial split at 300px, user-draggable
@@ -258,7 +252,7 @@ A `QMainWindow` with:
 
 Cross-tab signals:
 - `buckets_changed`: emitted by Ingest and Search tabs, triggers refresh of all tab bucket lists
-- `model_state_changed`: emitted by Ingest tab, triggers refresh of Search tab model-dependent controls, updates the model indicator in the status bar, and hides the welcome banner if conditions are met
+- `model_state_changed`: emitted by Ingest tab, triggers refresh of Search tab model-dependent controls and updates the model indicator in the status bar
 - `search_with_image(hash)`: emitted by History tab, switches to Search tab and runs a search with that hash as the query
 - `status_message(str)`: emitted by Ingest and Search tabs, updates the status bar message
 
@@ -695,7 +689,7 @@ Python 3.12+ required.
 6. Instantiate `HydrusService` (creates API client with stored credentials)
 7. Create `MainWindow`:
    - Restore window geometry from `QSettings` if available, otherwise size to 75% of `screen().availableGeometry()`
-   - Set title, create menu bar, toolbar, and styled status bar with persistent model/connection indicators
+   - Set title, create menu bar and styled status bar with persistent model/connection indicators
     - Create three tabs in workflow order (Search, Ingest, History)
     - Apply QSS stylesheet if configured
     - Wire cross-tab signals

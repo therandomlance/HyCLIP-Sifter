@@ -70,7 +70,6 @@ QTabBar::tab {
     margin-right: 2px;
 }
 QTabBar::tab:selected { background-color: @surface; border-bottom: 1px solid @surface; }
-QToolBar { background-color: @surface_alt; border: none; border-bottom: 1px solid @border; spacing: 4px; padding: 3px; }
 QStatusBar { background-color: @surface_alt; border-top: 1px solid @border; }
 QStatusBar::item { border: none; }
 QSplitter::handle { background-color: @border; }

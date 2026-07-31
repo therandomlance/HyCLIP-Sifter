@@ -77,7 +77,7 @@ hyclip_sifter/
 ├── thumbnail_cache.py   # disk cache at cache_dir/{hash[:2]}/{hash}.jpg
 ├── workers.py           # All workers extend QThread directly
 └── ui/
-    ├── main_window.py   # QMainWindow with 3 tabs + menu/toolbar/statusbar
+    ├── main_window.py   # QMainWindow with 3 tabs + menu/statusbar
     ├── ingest_tab.py    # bucket CRUD, model load/eject, ingest queue
     ├── search_tab.py    # query image/text → vector search → triage
     ├── history_tab.py   # browse triage history, undelete, re-ingest
