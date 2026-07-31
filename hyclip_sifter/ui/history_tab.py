@@ -14,7 +14,7 @@ from ..database import Database, OP_ARCHIVE, OP_DELETE, OP_SKIP, OP_DEFER
 from ..clip_model import ClipModel
 from ..hydrus_service import HydrusService
 from ..workers import HydrusOperationWorker, UndeleteWorker
-from .widgets import hrule
+from .widgets import hrule, open_external
 from .thumbnail_grid import ThumbnailGrid
 
 
@@ -131,6 +131,7 @@ class HistoryTab(QWidget):
         self.export_btn.clicked.connect(self.export_csv)
         self.size_spin.valueChanged.connect(self.grid.set_icon_size)
         self.grid.search_with_image.connect(self.search_with_image)
+        self.grid.open_externally.connect(self._open_externally)
         self.grid.remove_from_trash.connect(self._remove_from_trash)
 
     # ----------------------------------------------------------- buckets
@@ -236,6 +237,12 @@ class HistoryTab(QWidget):
             QMessageBox.critical(self, "Export failed", str(exc))
             return
         QMessageBox.information(self, "Exported", f"Wrote {n} rows to {path}.")
+
+    def _open_externally(self, hash_: str) -> None:
+        path = self._hydrus.get_file_path(hash_)
+        err = open_external(path)
+        if err:
+            QMessageBox.information(self, "Not available", err)
 
     def _remove_from_trash(self, hash_: str) -> None:
         """Call Hydrus undelete_files for a single hash via a cancellable worker.

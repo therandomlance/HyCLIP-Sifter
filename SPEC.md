@@ -236,7 +236,7 @@ A `QMainWindow` with:
 - A **menu bar** with:
   - **File:** Preferences (opens settings dialog), Quit
   - **Edit:** Copy (copies selected hash), Select All / Deselect All / Invert Selection
-  - **View:** Theme submenu (Dark / Light / System default), Thumbnail Size submenu (Small 150px / Medium 300px / Large 450px presets)
+  - **View:** Theme submenu (Dark / Light / System default)
   - **Help:** About, Keyboard Shortcuts reference (opens a non-modal reference popup)
 - A **thin toolbar** below the menu bar with persistent actions visible on all tabs:
   - Back/Forward search history navigation

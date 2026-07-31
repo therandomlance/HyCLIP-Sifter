@@ -17,7 +17,7 @@ from ..database import Database, OP_DELETE, OP_ARCHIVE, OP_SKIP, OP_DEFER
 from ..clip_model import ClipModel
 from ..hydrus_service import HydrusService
 from ..workers import SearchWorker, HydrusOperationWorker, DedupWorker
-from .widgets import hrule
+from .widgets import hrule, open_external
 from .thumbnail_grid import ThumbnailGrid
 
 
@@ -128,6 +128,7 @@ class SearchTab(QWidget):
         self.text_input.setPlaceholderText("Describe what to look for (or avoid)…")
         self.text_sign = QToolButton()
         self.text_sign.setText("+")
+        self.text_sign.setObjectName("SignToggle")
         self.text_sign.setCheckable(True)
         self.text_sign.setFixedSize(28, 28)
         self.text_sign.setToolTip(
@@ -270,7 +271,7 @@ class SearchTab(QWidget):
         ]:
             btn = QPushButton(name)
             btn.setObjectName(obj)
-            btn.clicked.connect(lambda _, c=code: self._request_triage(c, source="bar"))
+            btn.clicked.connect(lambda _, c=code: self._trigger_triage(c, source="bar"))
             bar_layout.addWidget(btn)
         bar_layout.addStretch(1)
         self.selection_count = QLabel("0 selected")
@@ -283,12 +284,13 @@ class SearchTab(QWidget):
         splitter.setSizes([300, 10000])
         self.search_btn.clicked.connect(self.run_search)
         self.random_btn.clicked.connect(self.run_random)
+        self.text_input.returnPressed.connect(self.run_search)
         self.clear_query_btn.clicked.connect(self.clear_query)
         self.deselect_btn.clicked.connect(self.grid.deselect_all)
-        self.archive_btn.clicked.connect(lambda: self._request_triage(OP_ARCHIVE, source="sidebar"))
-        self.delete_btn.clicked.connect(lambda: self._request_triage(OP_DELETE, source="sidebar"))
-        defer_btn.clicked.connect(lambda: self._request_triage(OP_DEFER, source="sidebar"))
-        skip_btn.clicked.connect(lambda: self._request_triage(OP_SKIP, source="sidebar"))
+        self.archive_btn.clicked.connect(lambda: self._trigger_triage(OP_ARCHIVE, source="sidebar"))
+        self.delete_btn.clicked.connect(lambda: self._trigger_triage(OP_DELETE, source="sidebar"))
+        defer_btn.clicked.connect(lambda: self._trigger_triage(OP_DEFER, source="sidebar"))
+        skip_btn.clicked.connect(lambda: self._trigger_triage(OP_SKIP, source="sidebar"))
         self.size_spin.valueChanged.connect(self.grid.set_icon_size)
         self.bucket_combo.currentTextChanged.connect(self._update_button_states)
         self.grid.itemSelectionChanged.connect(self._on_selection_changed)
@@ -312,7 +314,10 @@ class SearchTab(QWidget):
         for keys, fn in [
             ("Ctrl+Return", self.run_search),
             ("Ctrl+Enter", self.run_search),
+            ("Return", self.run_search),
+            ("Enter", self.run_search),
             ("Ctrl+R", self.run_random),
+            ("R", self.run_random),
             ("Ctrl+L", self.clear_query),
         ]:
             act = QAction(self)
@@ -323,7 +328,7 @@ class SearchTab(QWidget):
                         ("S", OP_SKIP), ("F", OP_DEFER)]:
             act = QAction(self)
             act.setShortcut(QKeySequence(key))
-            act.triggered.connect(lambda _, c=op: self._request_triage(c, source="bar"))
+            act.triggered.connect(lambda _, c=op: self._trigger_triage(c, source="bar"))
             self.addAction(act)
 
     # ----------------------------------------------------------- buckets
@@ -569,6 +574,18 @@ class SearchTab(QWidget):
     _OP_NAMES = {OP_ARCHIVE: "Archive", OP_DELETE: "Delete",
                  OP_SKIP: "Skip", OP_DEFER: "Defer"}
 
+    def _trigger_triage(self, operation: int, source: str = "sidebar") -> None:
+        """Request a triage, or confirm the pending one if it matches the trigger.
+
+        Lets the same key/button that opened a confirmation also confirm it
+        (e.g. ``d`` to delete, ``d`` again to confirm).
+        """
+        pending = getattr(self, "_pending_triage", None)
+        if pending is not None and pending[0] == operation:
+            self._confirm_triage()
+            return
+        self._request_triage(operation, source=source)
+
     def _request_triage(self, operation: int, hashes: list[str] | None = None,
                         source: str = "sidebar") -> None:
         if hashes is None:
@@ -671,18 +688,9 @@ class SearchTab(QWidget):
     # ----------------------------------------------------------- external
     def _open_externally(self, hash_: str) -> None:
         path = self._hydrus.get_file_path(hash_)
-        if not path or not os.path.exists(path):
-            QMessageBox.information(self, "Not available", "Local file path unavailable.")
-            return
-        try:
-            if sys.platform.startswith("linux"):
-                subprocess.Popen(["xdg-open", path])
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", path])
-            else:
-                os.startfile(path)  # type: ignore[attr-defined]
-        except Exception as exc:
-            QMessageBox.warning(self, "Open failed", str(exc))
+        err = open_external(path)
+        if err:
+            QMessageBox.information(self, "Not available", err)
 
     def _copy_path(self, hash_: str) -> None:
         from PySide6.QtWidgets import QApplication

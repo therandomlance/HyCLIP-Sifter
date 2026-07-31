@@ -123,13 +123,6 @@ class MainWindow(QMainWindow):
             group.addAction(act)
             theme_menu.addAction(act)
             self._theme_actions[key] = act
-        size_menu = view_menu.addMenu("Thumbnail Size")
-        for label, px in [("Small 150px", 150), ("Medium 300px", 300),
-                          ("Large 450px", 450)]:
-            act = QAction(label, self, checkable=True)
-            act.setChecked(abs(self._config.thumbnail_size - px) < 25)
-            act.triggered.connect(lambda _, p=px: self._set_thumb_size(p))
-            size_menu.addAction(act)
 
         help_menu = menubar.addMenu("Help")
         about = QAction("About", self)
@@ -271,12 +264,6 @@ class MainWindow(QMainWindow):
         for k, act in getattr(self, "_theme_actions", {}).items():
             act.setChecked(k == key)
 
-    def _set_thumb_size(self, px: int) -> None:
-        self._config.set("ui", "thumbnail_size", px)
-        self._config.save()
-        self.search_tab.size_spin.setValue(px)
-        self.history_tab.size_spin.setValue(px)
-
     def _stop_search(self) -> None:
         if self.search_tab._search_worker is not None:
             self.search_tab._search_worker.cancel()
@@ -326,10 +313,12 @@ class MainWindow(QMainWindow):
         text = (
             "<b>Search tab</b><br>"
             "A — Archive &nbsp; D — Delete &nbsp; S — Skip &nbsp; F — Defer<br>"
-            "Ctrl+Enter — Run search &nbsp; Ctrl+R — Random sample<br>"
-            "Ctrl+L — Clear query &nbsp; Escape — Deselect / clear<br>"
-            "Enter — Search using focused image &nbsp; Shift+Enter — Search using selection<br>"
+            "&nbsp;&nbsp;&nbsp;(press the same key again to confirm a pending triage)<br>"
+            "Enter / Ctrl+Enter — Run search &nbsp; R / Ctrl+R — Random sample<br>"
+            "Ctrl+L — Clear query<br>"
             "<br><b>Grid</b><br>"
+            "Shift+Click — Extend selection to the last clicked thumbnail<br>"
+            "Middle Click — Open thumbnail externally<br>"
             "Ctrl+A / Ctrl+Shift+A / Ctrl+I — Select / Deselect / Invert<br>"
             "Arrows / Home / End / PageUp / PageDown — Navigate<br>"
             "Space — Toggle focused item<br>"
@@ -337,7 +326,7 @@ class MainWindow(QMainWindow):
             "Ctrl+1/2/3 — Switch tabs &nbsp; Ctrl+P — Preferences"
         )
         label = QLabel(text)
-        label.setTextInteractionFlags(Qt.TextInteractionFlag.RichText)
+        label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         lay.addWidget(label)
         w.show()
 

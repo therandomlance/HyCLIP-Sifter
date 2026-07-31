@@ -102,6 +102,7 @@ class ThumbnailGrid(QListWidget):
         self._hover_timer.setSingleShot(True)
         self._hover_timer.timeout.connect(self._show_hover_preview)
         self._hover_index: QListWidgetItem | None = None
+        self._shift_anchor: int | None = None
         self._context_menu = QMenu(self)
         self._build_context_menu()
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -451,6 +452,38 @@ class ThumbnailGrid(QListWidget):
     def mouseMoveEvent(self, event) -> None:
         self._last_pos = event.pos()
         super().mouseMoveEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        # Shift-click selects the range from the last clicked thumbnail to the
+        # clicked one, adding to (never clearing) the existing selection.
+        if event.button() == Qt.MouseButton.LeftButton \
+                and event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
+            item = self.itemAt(event.pos())
+            if item is not None:
+                if self._shift_anchor is not None:
+                    start = min(self._shift_anchor, self.row(item))
+                    end = max(self._shift_anchor, self.row(item))
+                    for i in range(start, end + 1):
+                        self.item(i).setSelected(True)
+                else:
+                    item.setSelected(True)
+                self.setCurrentItem(item)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+        if event.button() == Qt.MouseButton.LeftButton:
+            item = self.itemAt(event.pos())
+            if item is not None:
+                self._shift_anchor = self.row(item)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.MiddleButton:
+            item = self.itemAt(event.pos())
+            if item is not None:
+                self.open_externally.emit(item.data(Qt.ItemDataRole.UserRole))
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:
         sb = self.verticalScrollBar()

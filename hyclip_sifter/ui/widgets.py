@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QPixmap, QColor, QPainter, QFont
 from PySide6.QtWidgets import (
@@ -9,6 +13,25 @@ from PySide6.QtWidgets import (
 )
 
 from .theme import ROLES
+
+
+def open_external(path: str) -> str | None:
+    """Open a local path with the system default handler.
+
+    Returns ``None`` on success, or an error message string on failure.
+    """
+    if not path or not os.path.exists(path):
+        return "Local file path unavailable."
+    try:
+        if sys.platform.startswith("linux"):
+            subprocess.Popen(["xdg-open", path])
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", path])
+        else:
+            os.startfile(path)  # type: ignore[attr-defined]
+        return None
+    except Exception as exc:
+        return str(exc)
 
 
 def hrule() -> QFrame:

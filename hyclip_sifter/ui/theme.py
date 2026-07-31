@@ -105,6 +105,16 @@ QPushButton#PrimaryBtn, QPushButton#accent {
 }
 QPushButton#PrimaryBtn:hover { background-color: #2f6fbd; }
 QPushButton#ArchiveBtn { background-color: @archive; border-color: @archive; color: white; }
+QToolButton#SignToggle {
+    background-color: @surface_alt;
+    border: 1px solid @border;
+    border-radius: 4px;
+    color: @text;
+    font-size: 17px;
+    font-weight: 700;
+}
+QToolButton#SignToggle:hover { background-color: @border; }
+QToolButton#SignToggle:checked { color: @accent; }
 QPushButton#DeleteBtn  { background-color: @delete;  border-color: @delete;  color: white; }
 QPushButton#DeferBtn   { background-color: @defer;   border-color: @defer;   color: white; }
 QPushButton#SkipBtn    { background-color: @skip;    border-color: @skip;    color: black; }

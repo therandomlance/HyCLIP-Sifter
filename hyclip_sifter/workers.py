@@ -322,10 +322,10 @@ class SearchWorker(_Cancellable):
                     vec = [v - n for v, n in zip(vec, neg)]
 
             blob = _pack(vec)
-            exclude = self._query_hash
             results: list[tuple[str, float]] = []
             batch: list[tuple[str, float]] = []
-            for h, d in self._db.nearest_neighbors_stream(self._bucket, blob, self._k, exclude):
+            # Keep the query image in the results so it shows as distance 0.
+            for h, d in self._db.nearest_neighbors_stream(self._bucket, blob, self._k):
                 if self.cancelled:
                     return
                 results.append((h, d))
