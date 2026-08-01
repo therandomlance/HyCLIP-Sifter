@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QSettings, QTimer
+from PySide6.QtCore import Qt, QTimer, QByteArray
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence
 from PySide6.QtWidgets import (
     QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel,
@@ -40,17 +40,17 @@ class MainWindow(QMainWindow):
 
     # ----------------------------------------------------------- geometry
     def _restore_geometry(self) -> None:
-        settings = QSettings("HyCLIP", "Sifter")
-        geo = settings.value("geometry")
-        if geo is not None:
-            self.restoreGeometry(geo)
+        raw = self._config.get("ui", "geometry")
+        if raw:
+            self.restoreGeometry(QByteArray.fromHex(raw.encode()))
         else:
             screen = self.screen().availableGeometry()
             self.resize(int(screen.width() * 0.75), int(screen.height() * 0.75))
             self.move(int(screen.width() * 0.125), int(screen.height() * 0.125))
 
     def _save_geometry(self) -> None:
-        QSettings("HyCLIP", "Sifter").setValue("geometry", self.saveGeometry())
+        self._config.set("ui", "geometry", self.saveGeometry().toHex().data().decode())
+        self._config.save()
 
     # ----------------------------------------------------------- UI build
     def _build_ui(self) -> None:

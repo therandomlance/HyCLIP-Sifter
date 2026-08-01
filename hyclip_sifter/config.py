@@ -27,6 +27,7 @@ _DEFAULTS: list[tuple[str, str, str]] = [
     ("ui", "stylesheet", ""),
     ("ui", "thumbnail_cache_dir", "./thumb_cache/"),
     ("ui", "ingest_batch_size", "0"),
+    ("ui", "geometry", ""),
 ]
 
 def _to_bool(value: str) -> bool:
